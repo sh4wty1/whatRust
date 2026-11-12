@@ -79,6 +79,11 @@ fn set_view_visible(app: &AppHandle, view: &tauri::Webview, visible: bool) {
                 .unwrap()
                 .remove(view.label());
         }
+        // Fork (sh4wty1): an off-screen WhatsApp view asks WebView2 for less memory.
+        #[cfg(windows)]
+        if view.label().starts_with("wa-") {
+            crate::memory::set_target(view, !visible);
+        }
     }
 }
 
@@ -103,9 +108,15 @@ pub fn schedule_layout(app: &AppHandle, parent: &str) {
         });
     });
 }
-fn forget_view_geometry(app: &AppHandle, label: &str) {
+pub(crate) fn forget_view_geometry(app: &AppHandle, label: &str) {
     crate::lock::guard(&state(app).applied_bounds).remove(label);
     crate::lock::guard(&state(app).view_visibility).remove(label);
+}
+
+/// Whether the settings panel is open in any window (fork: crate::memory).
+#[cfg(windows)]
+pub(crate) fn panel_open(app: &AppHandle) -> bool {
+    crate::lock::guard(&state(app).panel_parent).is_some()
 }
 
 fn reparent_on_ui(app: &AppHandle, view: &tauri::Webview, parent: &Window) -> Result<(), String> {
@@ -127,6 +138,26 @@ fn reparent_on_ui(app: &AppHandle, view: &tauri::Webview, parent: &Window) -> Re
     rx.recv().map_err(|e| e.to_string())?
 }
 
+/// The account bar of the main window. Also rebuilt by crate::memory (fork) after
+/// it was closed while the window sat hidden in the tray.
+pub(crate) fn add_shell(app: &AppHandle, w: &Window) -> tauri::Result<()> {
+    let shell = WebviewBuilder::new("shell-main", WebviewUrl::App("shell.html".into()))
+        .initialization_script(crate::i18n::init_script())
+        .data_directory(app.path().app_data_dir()?.join("management"))
+        .on_navigation(crate::integration::local_url);
+    let shell_view = w.add_child(
+        shell,
+        tauri::LogicalPosition::new(0., 0.),
+        tauri::LogicalSize::new(1100., 800.),
+    )?;
+    prepare_view(&shell_view);
+    #[cfg(target_os = "linux")]
+    pin_shell_height(&shell_view);
+    #[cfg(not(target_os = "linux"))]
+    let _ = shell_view;
+    Ok(())
+}
+
 pub fn initialize(app: &AppHandle, hidden: bool) -> tauri::Result<Window> {
     if let Some(w) = app.get_window("main") {
         return Ok(w);
@@ -142,20 +173,7 @@ pub fn initialize(app: &AppHandle, hidden: bool) -> tauri::Result<Window> {
         .build()?;
     #[cfg(windows)]
     install_menu(app, &w)?;
-    let shell = WebviewBuilder::new("shell-main", WebviewUrl::App("shell.html".into()))
-        .initialization_script(crate::i18n::init_script())
-        .data_directory(app.path().app_data_dir()?.join("management"))
-        .on_navigation(crate::integration::local_url);
-    let shell_view = w.add_child(
-        shell,
-        tauri::LogicalPosition::new(0., 0.),
-        tauri::LogicalSize::new(1100., 800.),
-    )?;
-    prepare_view(&shell_view);
-    #[cfg(target_os = "linux")]
-    pin_shell_height(&shell_view);
-    #[cfg(not(target_os = "linux"))]
-    let _ = shell_view;
+    add_shell(app, &w)?;
     let a = app.clone();
     w.on_window_event(move |event| match event {
         tauri::WindowEvent::Resized(_) | tauri::WindowEvent::ScaleFactorChanged { .. } => {
@@ -421,6 +439,11 @@ fn layout_on_main(app: &AppHandle, parent: &str) {
     // open chat may suppress its own desktop notification.
     let minimized = w.is_minimized().unwrap_or(false);
     let visible = w.is_visible().unwrap_or(false) && !minimized && crate::lock::is_unlocked(app);
+    // Fork (sh4wty1): close/rebuild the management profile around tray stays.
+    #[cfg(windows)]
+    if parent == "main" {
+        crate::memory::main_window(app, !w.is_visible().unwrap_or(true));
+    }
     let active = selected(app, parent);
     let panel_open = crate::lock::guard(&state(app).panel_parent).as_deref() == Some(parent);
     for (label, view) in app.webviews() {
