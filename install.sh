@@ -1,13 +1,13 @@
 #!/bin/sh
-# whatRust one-line installer — Linux & macOS.
+# whatRust one-line installer — Linux (fork sh4wty1/whatRust: Linux + Windows only).
 #
-#   curl -fsSL https://raw.githubusercontent.com/karem505/whatRust/master/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/sh4wty1/whatRust/master/install.sh | sh
 #
-# Downloads the latest published GitHub release and installs it
-# (AppImage on Linux, .app into /Applications on macOS). No build toolchain needed.
+# Downloads the latest published GitHub release of the fork and installs the
+# AppImage into ~/.local/bin. No build toolchain needed.
 set -eu
 
-REPO="karem505/whatRust"
+REPO="sh4wty1/whatRust"
 APP="whatRust"
 API="https://api.github.com/repos/${REPO}/releases/latest"
 
@@ -66,38 +66,8 @@ EOF
     grn "Launch '${APP}' from your app menu, or run: ${OUT}"
     grn "(If it won't start, your system may need FUSE: 'sudo apt install libfuse2', or run with --appimage-extract-and-run.)"
     ;;
-  Darwin)
-    case "$ARCH" in
-      arm64|aarch64) PAT='aarch64|arm64' ;;
-      *)             PAT='x64|x86_64|intel' ;;
-    esac
-    URL=$(pick "(${PAT}).*\.dmg$")
-    [ -n "$URL" ] || URL=$(pick '\.dmg$')
-    [ -n "$URL" ] || { red "No .dmg asset in the latest release."; exit 1; }
-    TMP=$(mktemp -d); DMG="${TMP}/${APP}.dmg"
-    # Mount at a private path instead of parsing hdiutil's output: with the
-    # image already open, macOS picks "/Volumes/whatRust 1", whose space the old
-    # parsing split on (#58). The trap detaches and cleans up on every exit.
-    MNT="${TMP}/mnt"
-    mkdir "$MNT"
-    trap 'hdiutil detach "$MNT" >/dev/null 2>&1 || true; rm -rf "$TMP"' EXIT
-    trap 'exit 1' HUP INT TERM
-    grn "Downloading $(basename "$URL")…"
-    download "$URL" "$DMG"
-    hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "$DMG" >/dev/null
-    BUNDLE=$(find "$MNT" -maxdepth 1 -name '*.app' | head -n1)
-    [ -n "$BUNDLE" ] || { red "No .app inside the dmg."; exit 1; }
-    NAME=$(basename "$BUNDLE")
-    grn "Installing ${NAME} to /Applications…"
-    rm -rf "/Applications/${NAME}"
-    cp -R "$BUNDLE" /Applications/
-    # Unsigned build: clear the quarantine flag so Gatekeeper doesn't block first launch.
-    xattr -dr com.apple.quarantine "/Applications/${NAME}" 2>/dev/null || true
-    grn "Installed to /Applications/${NAME}"
-    grn "Launch it from Launchpad or /Applications."
-    ;;
   *)
-    red "Unsupported OS: ${OS}. See the README for manual install."
+    red "Unsupported OS: ${OS}. This fork ships Linux and Windows only (Windows: install.ps1)."
     exit 1
     ;;
 esac

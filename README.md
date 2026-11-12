@@ -1,3 +1,8 @@
+> [!NOTE]
+> **Fork sh4wty1/whatRust** — Windows e Linux apenas, com updater apontando para este fork.
+> Instalação, release e como acompanhar o original: [FORK.md](FORK.md).
+> O README abaixo é o do projeto original ([karem505/whatRust](https://github.com/karem505/whatRust)).
+
 <p align="center">
   <img src="src-tauri/icons/128x128.png" width="96" alt="whatRust app icon — a lightweight WhatsApp Web desktop client">
 </p>

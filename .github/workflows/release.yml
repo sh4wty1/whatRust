@@ -56,7 +56,6 @@ jobs:
         include:
           - platform: ubuntu-22.04
           - platform: windows-latest
-          - platform: macos-latest
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -124,60 +123,27 @@ jobs:
             fi
           done
 
-  flatpak:
-    name: Flatpak (${{ matrix.variant.arch }})
-    needs: prepare
-    strategy:
-      fail-fast: false
-      matrix:
-        variant:
-          - arch: x86_64
-            runner: ubuntu-24.04
-          - arch: aarch64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.variant.runner }}
-    container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-48
-      options: --privileged
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          submodules: recursive
-      - uses: flatpak/flatpak-github-actions/flatpak-builder@401fe28a8384095fc1531b9d320b292f0ee45adb # v6.7
-        with:
-          bundle: whatRust_${{ matrix.variant.arch }}.flatpak
-          manifest-path: io.github.karem505.whatRust.yml
-          branch: stable
-          cache-key: whatrust-flatpak-${{ matrix.variant.arch }}-${{ github.sha }}
-          arch: ${{ matrix.variant.arch }}
-          verbose: true
-
-  publish-flatpak:
-    name: Attach Flatpaks to release
+  # Fork (sh4wty1): Windows + Linux only. The Flatpak and macOS jobs were removed;
+  # their sources stay in the tree, dormant, so upstream merges stay clean.
+  publish:
+    name: Write SHA256SUMS and publish release
     if: needs.prepare.outputs.tag != ''
-    needs: [prepare, build, flatpak]
+    needs: [prepare, build]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          pattern: whatRust_*-*.flatpak
-          path: flatpak-assets
-          merge-multiple: true
       # The in-app updater only installs a download whose SHA-256 is listed in the
-      # release's SHA256SUMS. Compute it from the assets as they sit on the draft
-      # (every platform's bundles plus the Flatpaks uploaded above), so what users
-      # download is exactly what was hashed, and upload it BEFORE publishing:
-      # `releases/latest` must never point at a release without SHA256SUMS.
-      - name: Upload Flatpak bundles, write SHA256SUMS and publish release
+      # release's SHA256SUMS. Compute it from the assets as they sit on the draft,
+      # so what users download is exactly what was hashed, and upload it BEFORE
+      # publishing: `releases/latest` must never point at a release without SHA256SUMS.
+      - name: Write SHA256SUMS and publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           set -euo pipefail
-          gh release upload "$RELEASE_TAG" flatpak-assets/*.flatpak --clobber
 
           # Download every asset of the draft through the API (a draft has no tag
           # yet on a manual run, so `gh release download <tag>` cannot find it).
@@ -201,9 +167,8 @@ jobs:
           done < assets.txt
           # A release must carry the bundles the updater looks for; fail rather than
           # publish one it cannot use.
-          for pattern in '*_x64-setup.exe' '*_x64_en-US.msi' '*_aarch64.dmg' '*.app.tar.gz' \
-                         '*_amd64.deb' '*_amd64.AppImage' 'whatRust_x86_64.flatpak' \
-                         'whatRust_aarch64.flatpak'; do
+          for pattern in '*_x64-setup.exe' '*_x64_en-US.msi' \
+                         '*_amd64.deb' '*_amd64.AppImage'; do
             compgen -G "release-assets/$pattern" >/dev/null \
               || { echo "::error::release $RELEASE_TAG has no asset matching $pattern"; exit 1; }
           done

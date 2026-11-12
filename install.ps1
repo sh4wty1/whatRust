@@ -1,11 +1,11 @@
 # whatRust one-line installer — Windows.
 #
-#   irm https://raw.githubusercontent.com/karem505/whatRust/master/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/sh4wty1/whatRust/master/install.ps1 | iex
 #
 # Downloads the latest published GitHub release installer (NSIS .exe, falling back
 # to the .msi) and runs it.
 $ErrorActionPreference = 'Stop'
-$repo = 'karem505/whatRust'
+$repo = 'sh4wty1/whatRust'
 $app  = 'whatRust'
 
 Write-Host "Installing $app (latest)..." -ForegroundColor Green

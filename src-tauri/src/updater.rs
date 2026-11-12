@@ -29,12 +29,12 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-pub const REPO: &str = "karem505/whatRust";
+pub const REPO: &str = "sh4wty1/whatRust";
 pub const FEED_ENV: &str = "WHATRUST_UPDATE_FEED";
 /// Where the Flatpak fallback sends people who cannot use the bundle directly.
 pub const FLATPAK_COMMAND: &str =
-    "curl -fsSL https://raw.githubusercontent.com/karem505/whatRust/master/install-flatpak.sh | sh";
-const ASSET_PREFIX: &str = "https://github.com/karem505/whatRust/releases/download/";
+    "curl -fsSL https://raw.githubusercontent.com/sh4wty1/whatRust/master/install-flatpak.sh | sh";
+const ASSET_PREFIX: &str = "https://github.com/sh4wty1/whatRust/releases/download/";
 const NOTES_LIMIT: usize = 60_000;
 
 // ---- errors ---------------------------------------------------------------------------------
@@ -1123,7 +1123,7 @@ mod tests {
     fn release_json(tag: &str, assets: &[(&str, &str)]) -> Value {
         json!({
             "tag_name": tag, "name": format!("whatRust {tag}"), "body": "**Fixes**\n- one",
-            "html_url": "https://github.com/karem505/whatRust/releases/tag/x",
+            "html_url": "https://github.com/sh4wty1/whatRust/releases/tag/x",
             "published_at": "2026-10-17T10:00:00Z",
             "assets": assets.iter().map(|(n, u)| json!({"name": n, "browser_download_url": u, "size": 0})).collect::<Vec<_>>()
         })
@@ -1530,7 +1530,7 @@ mod tests {
         assert!(!overridden);
         assert_eq!(
             url,
-            "https://api.github.com/repos/karem505/whatRust/releases/latest"
+            "https://api.github.com/repos/sh4wty1/whatRust/releases/latest"
         );
     }
 
@@ -2311,7 +2311,7 @@ mod tests {
         let (port, rx) = fake_http_proxy("", false);
         std::env::set_var(
             FEED_ENV,
-            "https://api.github.com/repos/karem505/whatRust/releases/latest",
+            "https://api.github.com/repos/sh4wty1/whatRust/releases/latest",
         );
         let net = Net {
             proxy: Some(format!("http://127.0.0.1:{port}")),

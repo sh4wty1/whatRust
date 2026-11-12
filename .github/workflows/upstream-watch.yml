@@ -1,0 +1,91 @@
+name: upstream-watch
+
+# Fork-only: once a week, compare this fork with the original repo and keep ONE
+# open issue (label "upstream") listing the upstream commits that are not here yet,
+# so each one can be reviewed before it is merged or cherry-picked. Nothing is
+# merged automatically. Commits already cherry-picked (same patch) are not listed.
+# When the fork has caught up, the issue is closed.
+on:
+  schedule:
+    - cron: "0 12 * * 1" # Mondays 12:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency: upstream-watch
+
+jobs:
+  watch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Compare with upstream and update the tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          UPSTREAM: karem505/whatRust
+        run: |
+          set -euo pipefail
+          git remote add upstream "https://github.com/$UPSTREAM.git"
+          # --no-tags: upstream tags share names with this fork's release tags.
+          git fetch --quiet --no-tags upstream master
+          head=$(git rev-parse upstream/master)
+          base=$(git merge-base HEAD upstream/master)
+
+          git log --cherry-pick --right-only --no-merges --reverse \
+            --format='%H%x09%as%x09%s' HEAD...upstream/master > new.tsv
+          n=$(wc -l < new.tsv | tr -d ' ')
+
+          gh label create upstream --color 5319e7 \
+            --description "Mudanças no repositório original" --force >/dev/null
+          issue=$(gh issue list --state open --label upstream --json number --jq '.[0].number // empty')
+
+          if [ "$n" -eq 0 ]; then
+            echo "Fork is up to date with $UPSTREAM ($head)."
+            if [ -n "$issue" ]; then
+              gh issue close "$issue" --comment "Fork em dia com o upstream (\`${head:0:7}\`)."
+            fi
+            exit 0
+          fi
+
+          latest=$(gh release view -R "$UPSTREAM" --json tagName --jq .tagName 2>/dev/null || echo "?")
+          stat=$(git diff --shortstat "$base" upstream/master || true)
+          {
+            echo "<!-- upstream-head: $head -->"
+            echo "**$n commit(s)** em [\`$UPSTREAM\`](https://github.com/$UPSTREAM) que ainda não estão neste fork."
+            echo
+            echo "- Último release do original: **$latest**"
+            echo "- Diff completo: https://github.com/$UPSTREAM/compare/${base}...${head}"
+            echo "- Tamanho: $stat"
+            echo
+            echo "| Commit | Data | Mensagem |"
+            echo "|---|---|---|"
+            head -n 200 new.tsv | while IFS="$(printf '\t')" read -r sha date subject; do
+              subject=$(printf '%s' "$subject" | sed 's/|/\\|/g')
+              echo "| [\`${sha:0:7}\`](https://github.com/$UPSTREAM/commit/$sha) | $date | $subject |"
+            done
+            [ "$n" -le 200 ] || echo "| … | | mais $((n - 200)) commit(s), veja o diff completo |"
+            echo
+            echo "Como aplicar (veja \`FORK.md\`):"
+            echo '```'
+            echo "git fetch upstream"
+            echo "git merge upstream/master        # tudo"
+            echo "git cherry-pick <commit>         # ou só o que interessa"
+            echo '```'
+          } > body.md
+
+          if [ -z "$issue" ]; then
+            gh issue create --title "Upstream: $n commit(s) novos no original" \
+              --label upstream --body-file body.md
+          else
+            prev=$(gh issue view "$issue" --json body --jq .body | sed -n 's/^<!-- upstream-head: \([0-9a-f]*\) -->$/\1/p')
+            gh issue edit "$issue" --title "Upstream: $n commit(s) novos no original" --body-file body.md
+            if [ "$prev" != "$head" ]; then
+              gh issue comment "$issue" --body "O original mudou desde a última checagem (agora \`${head:0:7}\`, release **$latest**). Lista atualizada acima."
+            fi
+          fi
